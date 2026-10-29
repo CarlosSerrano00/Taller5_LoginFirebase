@@ -14,6 +14,7 @@ import { Aviso } from '@/components/aviso';
 import { Boton } from '@/components/boton';
 import { CampoTexto } from '@/components/campo-texto';
 import { PantallaHoja } from '@/components/pantalla-hoja';
+import { Sacudida } from '@/components/sacudida';
 import { colores, espacio, fuentes } from '@/constants/tema';
 import { useSesion } from '@/context/sesion';
 import { mensajeDeError } from '@/lib/errores-firebase';
@@ -37,7 +38,9 @@ export default function PantallaRegistro() {
   const [errores, setErrores] = useState<Errores>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
- 
+  // Contador que dispara la sacudida; se incrementa con cada fallo.
+  const [sacudida, setSacudida] = useState(0);
+
   async function manejarRegistro() {
     const nuevosErrores: Errores = {
       nombre: validarNombre(nombre),
@@ -48,14 +51,19 @@ export default function PantallaRegistro() {
     setErrores(nuevosErrores);
     setErrorGeneral(null);
     // Object.values + some: ¿hay al menos un error?
-    if (Object.values(nuevosErrores).some(Boolean)) return;
- 
+    if (Object.values(nuevosErrores).some(Boolean)) {
+      setSacudida((n) => n + 1);
+      return;
+    }
+
     setEnviando(true);
     try {
       await registrarse(nombre, correo, clave);
-      // Al crear la cuenta Firebase inicia sesión y el layout muestra la bienvenida.
+      // Firebase inicia sesión, pero la cuenta queda sin verificar: el layout
+      // muestra la pantalla de verificación hasta confirmar el correo.
     } catch (error) {
       setErrorGeneral(mensajeDeError(error));
+      setSacudida((n) => n + 1);
       setEnviando(false);
     }
   }
@@ -65,49 +73,51 @@ export default function PantallaRegistro() {
       conVolver
       titulo={'Crea tu\ncuenta'}
       bajada="Con esta cuenta entrarás a la app desde cualquier teléfono.">
-      {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
- 
-      <CampoTexto
-        etiqueta="Nombre"
-        placeholder="Como quieres que te saludemos"
-        value={nombre}
-        onChangeText={setNombre}
-        error={errores.nombre}
-        autoCapitalize="words"
-        textContentType="name"
-        autoComplete="name"
-      />
-      <CampoTexto
-        etiqueta="Correo"
-        placeholder="nombre.apellido@epn.edu.ec"
-        value={correo}
-        onChangeText={setCorreo}
-        error={errores.correo}
-        keyboardType="email-address"
-        textContentType="emailAddress"
-        autoComplete="email"
-      />
-      <CampoTexto
-        etiqueta="Contraseña"
-        placeholder={`Mínimo ${LONGITUD_MINIMA_CLAVE} caracteres`}
-        value={clave}
-        onChangeText={setClave}
-        error={errores.clave}
-        esClave
-        // "newPassword" hace que iOS sugiera una contraseña segura.
-        textContentType="newPassword"
-        autoComplete="new-password"
-      />
-      <CampoTexto
-        etiqueta="Repite la contraseña"
-        value={confirmacion}
-        onChangeText={setConfirmacion}
-        error={errores.confirmacion}
-        esClave
-        textContentType="newPassword"
-        autoComplete="new-password"
-        onSubmitEditing={manejarRegistro}
-      />
+      <Sacudida disparo={sacudida} style={styles.grupo}>
+        {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
+
+        <CampoTexto
+          etiqueta="Nombre"
+          placeholder="Como quieres que te saludemos"
+          value={nombre}
+          onChangeText={setNombre}
+          error={errores.nombre}
+          autoCapitalize="words"
+          textContentType="name"
+          autoComplete="name"
+        />
+        <CampoTexto
+          etiqueta="Correo"
+          placeholder="nombre.apellido@epn.edu.ec"
+          value={correo}
+          onChangeText={setCorreo}
+          error={errores.correo}
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          autoComplete="email"
+        />
+        <CampoTexto
+          etiqueta="Contraseña"
+          placeholder={`Mínimo ${LONGITUD_MINIMA_CLAVE} caracteres`}
+          value={clave}
+          onChangeText={setClave}
+          error={errores.clave}
+          esClave
+          // "newPassword" hace que iOS sugiera una contraseña segura.
+          textContentType="newPassword"
+          autoComplete="new-password"
+        />
+        <CampoTexto
+          etiqueta="Repite la contraseña"
+          value={confirmacion}
+          onChangeText={setConfirmacion}
+          error={errores.confirmacion}
+          esClave
+          textContentType="newPassword"
+          autoComplete="new-password"
+          onSubmitEditing={manejarRegistro}
+        />
+      </Sacudida>
  
       <Boton texto="Crear cuenta" onPress={manejarRegistro} cargando={enviando} />
  
@@ -120,6 +130,9 @@ export default function PantallaRegistro() {
 }
  
 const styles = StyleSheet.create({
+  grupo: {
+    gap: espacio.m,
+  },
   pie: {
     flexDirection: 'row',
     justifyContent: 'center',

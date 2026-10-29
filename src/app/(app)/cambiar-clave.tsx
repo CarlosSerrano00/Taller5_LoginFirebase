@@ -10,11 +10,14 @@
  */
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet } from 'react-native';
  
 import { Aviso } from '@/components/aviso';
 import { Boton } from '@/components/boton';
 import { CampoTexto } from '@/components/campo-texto';
 import { PantallaHoja } from '@/components/pantalla-hoja';
+import { Sacudida } from '@/components/sacudida';
+import { espacio } from '@/constants/tema';
 import { useSesion } from '@/context/sesion';
 import { mensajeDeError } from '@/lib/errores-firebase';
 import { LONGITUD_MINIMA_CLAVE, validarClave, validarConfirmacion } from '@/lib/validaciones';
@@ -31,7 +34,9 @@ export default function PantallaCambiarClave() {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
   const [enviando, setEnviando] = useState(false);
- 
+  // Contador que dispara la sacudida; se incrementa con cada fallo.
+  const [sacudida, setSacudida] = useState(0);
+
   async function manejarCambio() {
     const nuevosErrores: Errores = {
       actual: actual ? null : 'Escribe tu contraseña actual.',
@@ -42,8 +47,11 @@ export default function PantallaCambiarClave() {
     };
     setErrores(nuevosErrores);
     setErrorGeneral(null);
-    if (Object.values(nuevosErrores).some(Boolean)) return;
- 
+    if (Object.values(nuevosErrores).some(Boolean)) {
+      setSacudida((n) => n + 1);
+      return;
+    }
+
     setEnviando(true);
     try {
       await cambiarClave(actual, nueva);
@@ -60,6 +68,7 @@ export default function PantallaCambiarClave() {
           'auth/wrong-password': 'La contraseña actual no es correcta.',
         }),
       );
+      setSacudida((n) => n + 1);
     } finally {
       setEnviando(false);
     }
@@ -70,42 +79,44 @@ export default function PantallaCambiarClave() {
       conVolver
       titulo={'Cambia tu\ncontraseña'}
       bajada={`Confirma la actual y elige una nueva de al menos ${LONGITUD_MINIMA_CLAVE} caracteres.`}>
-      {listo ? (
-        <Aviso
-          tipo="exito"
-          mensaje="Contraseña actualizada. La próxima vez que inicies sesión usa la nueva."
+      <Sacudida disparo={sacudida} style={styles.grupo}>
+        {listo ? (
+          <Aviso
+            tipo="exito"
+            mensaje="Contraseña actualizada. La próxima vez que inicies sesión usa la nueva."
+          />
+        ) : null}
+        {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
+
+        <CampoTexto
+          etiqueta="Contraseña actual"
+          value={actual}
+          onChangeText={setActual}
+          error={errores.actual}
+          esClave
+          textContentType="password"
+          autoComplete="current-password"
         />
-      ) : null}
-      {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
- 
-      <CampoTexto
-        etiqueta="Contraseña actual"
-        value={actual}
-        onChangeText={setActual}
-        error={errores.actual}
-        esClave
-        textContentType="password"
-        autoComplete="current-password"
-      />
-      <CampoTexto
-        etiqueta="Contraseña nueva"
-        value={nueva}
-        onChangeText={setNueva}
-        error={errores.nueva}
-        esClave
-        textContentType="newPassword"
-        autoComplete="new-password"
-      />
-      <CampoTexto
-        etiqueta="Repite la contraseña nueva"
-        value={confirmacion}
-        onChangeText={setConfirmacion}
-        error={errores.confirmacion}
-        esClave
-        textContentType="newPassword"
-        autoComplete="new-password"
-        onSubmitEditing={manejarCambio}
-      />
+        <CampoTexto
+          etiqueta="Contraseña nueva"
+          value={nueva}
+          onChangeText={setNueva}
+          error={errores.nueva}
+          esClave
+          textContentType="newPassword"
+          autoComplete="new-password"
+        />
+        <CampoTexto
+          etiqueta="Repite la contraseña nueva"
+          value={confirmacion}
+          onChangeText={setConfirmacion}
+          error={errores.confirmacion}
+          esClave
+          textContentType="newPassword"
+          autoComplete="new-password"
+          onSubmitEditing={manejarCambio}
+        />
+      </Sacudida>
  
       {listo ? (
         <Boton texto="Volver a la bienvenida" onPress={() => router.back()} />
@@ -115,3 +126,9 @@ export default function PantallaCambiarClave() {
     </PantallaHoja>
   );
 }
+
+const styles = StyleSheet.create({
+  grupo: {
+    gap: espacio.m,
+  },
+});

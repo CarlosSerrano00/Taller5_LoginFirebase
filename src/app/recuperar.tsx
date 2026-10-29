@@ -10,11 +10,14 @@
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet } from 'react-native';
  
 import { Aviso } from '@/components/aviso';
 import { Boton } from '@/components/boton';
 import { CampoTexto } from '@/components/campo-texto';
 import { PantallaHoja } from '@/components/pantalla-hoja';
+import { Sacudida } from '@/components/sacudida';
+import { espacio } from '@/constants/tema';
 import { useSesion } from '@/context/sesion';
 import { mensajeDeError } from '@/lib/errores-firebase';
 import { validarCorreo } from '@/lib/validaciones';
@@ -29,19 +32,25 @@ export default function PantallaRecuperar() {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
- 
+  // Contador que dispara la sacudida; se incrementa con cada fallo.
+  const [sacudida, setSacudida] = useState(0);
+
   async function manejarEnvio() {
     const error = validarCorreo(correo);
     setErrorCampo(error);
     setErrorGeneral(null);
-    if (error) return;
- 
+    if (error) {
+      setSacudida((n) => n + 1);
+      return;
+    }
+
     setEnviando(true);
     try {
       await enviarCorreoRecuperacion(correo);
       setEnviado(true);
     } catch (e) {
       setErrorGeneral(mensajeDeError(e));
+      setSacudida((n) => n + 1);
     } finally {
       // Aquí sí usamos finally: la pantalla sigue montada en ambos casos.
       setEnviando(false);
@@ -58,28 +67,30 @@ export default function PantallaRecuperar() {
         Decir "ese correo no está registrado" permitiría a un atacante
         averiguar qué correos tienen cuenta (enumeración de usuarios).
       */}
-      {enviado ? (
-        <Aviso
-          tipo="exito"
-          mensaje={`Si ${correo.trim()} tiene una cuenta, en unos minutos recibirás el enlace. Revisa también la carpeta de spam.`}
+      <Sacudida disparo={sacudida} style={styles.grupo}>
+        {enviado ? (
+          <Aviso
+            tipo="exito"
+            mensaje={`Si ${correo.trim()} tiene una cuenta, en unos minutos recibirás el enlace. Revisa también la carpeta de spam.`}
+          />
+        ) : null}
+        {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
+
+        <CampoTexto
+          etiqueta="Correo de tu cuenta"
+          placeholder="nombre.apellido@epn.edu.ec"
+          value={correo}
+          onChangeText={(texto) => {
+            setCorreo(texto);
+            setEnviado(false); // si cambia el correo, el aviso anterior ya no aplica
+          }}
+          error={errorCampo}
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          autoComplete="email"
+          onSubmitEditing={manejarEnvio}
         />
-      ) : null}
-      {errorGeneral ? <Aviso tipo="error" mensaje={errorGeneral} /> : null}
- 
-      <CampoTexto
-        etiqueta="Correo de tu cuenta"
-        placeholder="nombre.apellido@epn.edu.ec"
-        value={correo}
-        onChangeText={(texto) => {
-          setCorreo(texto);
-          setEnviado(false); // si cambia el correo, el aviso anterior ya no aplica
-        }}
-        error={errorCampo}
-        keyboardType="email-address"
-        textContentType="emailAddress"
-        autoComplete="email"
-        onSubmitEditing={manejarEnvio}
-      />
+      </Sacudida>
  
       {enviado ? (
         <>
@@ -92,3 +103,9 @@ export default function PantallaRecuperar() {
     </PantallaHoja>
   );
 }
+
+const styles = StyleSheet.create({
+  grupo: {
+    gap: espacio.m,
+  },
+});

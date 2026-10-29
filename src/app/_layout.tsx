@@ -47,7 +47,7 @@ export default function LayoutRaiz() {
  * ProveedorSesion, y LayoutRaiz es justamente quien lo crea.
  */
 function Navegacion({ fuentesListas }: { fuentesListas: boolean }) {
-  const { usuario, cargando } = useSesion();
+  const { usuario, cargando, verificado } = useSesion();
   const listo = fuentesListas && !cargando;
  
   useEffect(() => {
@@ -70,11 +70,19 @@ function Navegacion({ fuentesListas }: { fuentesListas: boolean }) {
         Si alguien está en una ruta que deja de existir (por ejemplo, cierra
         sesión estando en la bienvenida), Expo Router lo lleva a la primera
         ruta disponible. Así no hace falta escribir redirecciones a mano.
+
+        La bienvenida exige DOS condiciones: sesión iniciada y correo
+        verificado. Si alguien crea una cuenta y no confirma el correo, no
+        puede entrar a (app); queda en la pantalla de verificación.
       */}
-      <Stack.Protected guard={!!usuario}>
+      <Stack.Protected guard={!!usuario && verificado}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>
- 
+
+      <Stack.Protected guard={!!usuario && !verificado}>
+        <Stack.Screen name="verificar-correo" />
+      </Stack.Protected>
+
       <Stack.Protected guard={!usuario}>
         <Stack.Screen name="login" />
         <Stack.Screen name="registro" />

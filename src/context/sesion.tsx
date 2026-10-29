@@ -10,6 +10,7 @@ import {
   EmailAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -28,8 +29,23 @@ type ValorSesion = {
   nombre: string | null;
   /** true mientras Firebase revisa si hay una sesión guardada. */
   cargando: boolean;
+  /**
+   * true cuando Firebase confirmó el correo de la cuenta.
+   * Va aparte de `usuario` porque emailVerified no cambia su referencia y
+   * React no volvería a dibujar las pantallas al verificarse.
+   */
+  verificado: boolean;
+  /** Error del envío inicial de verificación, mostrado en esa pantalla. */
+  errorEnvioVerificacion: unknown | null;
   iniciarSesion: (correo: string, clave: string) => Promise<void>;
   registrarse: (nombre: string, correo: string, clave: string) => Promise<void>;
+  /** Vuelve a enviar el correo de verificación a la cuenta conectada. */
+  enviarVerificacion: () => Promise<void>;
+  /**
+   * Pregunta a Firebase si el correo ya fue verificado.
+   * @returns true si la cuenta quedó verificada.
+   */
+  comprobarVerificacion: () => Promise<boolean>;
   enviarCorreoRecuperacion: (correo: string) => Promise<void>;
   cambiarClave: (claveActual: string, claveNueva: string) => Promise<void>;
   cerrarSesion: () => Promise<void>;
@@ -54,6 +70,8 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   // `user` sin cambiar su referencia, así que React no detectaría el cambio
   // si las pantallas leyeran usuario.displayName directamente.
   const [nombre, setNombre] = useState<string | null>(null);
+  const [verificado, setVerificado] = useState(false);
+  const [errorEnvioVerificacion, setErrorEnvioVerificacion] = useState<unknown | null>(null);
 
   useEffect(() => {
     // onAuthStateChanged se dispara al arrancar (con la sesión guardada o null)
@@ -62,6 +80,8 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
     const cancelarSuscripcion = onAuthStateChanged(auth, (usuarioFirebase) => {
       setUsuario(usuarioFirebase);
       setNombre(usuarioFirebase?.displayName ?? null);
+      setVerificado(usuarioFirebase?.emailVerified ?? false);
+      if (!usuarioFirebase) setErrorEnvioVerificacion(null);
       setCargando(false);
     });
     // Al desmontar el proveedor dejamos de escuchar para no fugar memoria.
@@ -71,18 +91,50 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   async function iniciarSesion(correo: string, clave: string) {
     await signInWithEmailAndPassword(auth, correo.trim(), clave);
     // No navegamos aquí: onAuthStateChanged actualiza `usuario` y el
-    // Stack.Protected muestra automáticamente la pantalla de bienvenida.
+    // Stack.Protected muestra bienvenida o verificación según el correo.
   }
  
   async function registrarse(nombreCompleto: string, correo: string, clave: string) {
-    // Crear la cuenta también inicia la sesión.
+    // Crear la cuenta también inicia la sesión, pero la cuenta nace SIN
+    // verificar: el layout raíz mostrará la pantalla de verificación.
     const credencial = await createUserWithEmailAndPassword(auth, correo.trim(), clave);
+    // Enviamos el enlace de verificación (plantilla editable en la consola:
+    // Authentication > Templates > Email address verification). El usuario
+    // permanece en la pantalla de verificación aunque falle el envío.
+    try {
+      await sendEmailVerification(credencial.user);
+      setErrorEnvioVerificacion(null);
+    } catch (error) {
+      setErrorEnvioVerificacion(error);
+    }
     // Guardamos el nombre en el perfil de Firebase (campo displayName).
     const nombreLimpio = nombreCompleto.trim();
     await updateProfile(credencial.user, { displayName: nombreLimpio });
-    // La bienvenida ya se mostró (onAuthStateChanged corre al crear la cuenta,
-    // antes de updateProfile), así que actualizamos el nombre en el estado.
+    // updateProfile modifica el mismo objeto `user`, así que actualizamos
+    // también el estado del contexto.
     setNombre(nombreLimpio);
+  }
+
+  async function enviarVerificacion() {
+    const actual = auth.currentUser;
+    if (!actual) throw new Error('No hay una sesión activa.');
+    setErrorEnvioVerificacion(null);
+    try {
+      await sendEmailVerification(actual);
+    } catch (error) {
+      setErrorEnvioVerificacion(error);
+      throw error;
+    }
+  }
+
+  async function comprobarVerificacion() {
+    const actual = auth.currentUser;
+    if (!actual) return false;
+    // emailVerified se queda en caché hasta llamar a reload().
+    await actual.reload();
+    const verificadoAhora = auth.currentUser?.emailVerified ?? false;
+    setVerificado(verificadoAhora);
+    return verificadoAhora;
   }
  
   async function enviarCorreoRecuperacion(correo: string) {
@@ -114,8 +166,12 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         usuario,
         nombre,
         cargando,
+        verificado,
+        errorEnvioVerificacion,
         iniciarSesion,
         registrarse,
+        enviarVerificacion,
+        comprobarVerificacion,
         enviarCorreoRecuperacion,
         cambiarClave,
         cerrarSesion,
